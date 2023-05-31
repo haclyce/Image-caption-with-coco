@@ -189,6 +189,7 @@ def reproduce(seed):
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['TORCH_HOME'] = os.path.join('./data', 'pretrained_models')
     if not os.path.isdir('./log'):
         os.mkdir('./log')
     if not os.path.isdir('./checkpoints'):
@@ -206,7 +207,8 @@ def get_loader(transform,
                unk_word="<unk>",
                vocab_from_file=True,
                num_workers=0,
-               cocoapi_loc='/opt'):
+               data_loc='./data/annotations_DCC/',
+               category=None,):
     """Returns the data loader.
     Args:
       transform: Image transform.
@@ -219,11 +221,12 @@ def get_loader(transform,
       unk_word: Special word denoting unknown words.
       vocab_from_file: If False, create vocab from scratch & override any existing vocab_file.
                        If True, load vocab from existing vocab_file, if it exists.
-      num_workers: Number of subprocesses to use for data loading
-      cocoapi_loc: The location of the folder containing the COCO API: https://github.com/cocodataset/cocoapi
+      num_workers: Number of subprocesses to use for data loading.
+      data_loc: The location of the folder containing the MSCOCO annotations.
+      category: The name of the novel object category, only works for 'val' or 'test' mode.
     """
 
-    assert mode in ['train', 'test'], "mode must be one of 'train' or 'test'."
+    assert mode in ['train', 'val', 'test'], "mode must be one of 'train' 'val' or 'test'."
     if not vocab_from_file:
         assert mode == 'train', "To generate vocab from captions file, must be in training mode (mode='train')."
 
@@ -233,13 +236,14 @@ def get_loader(transform,
             assert os.path.exists(
                 vocab_file), "vocab_file does not exist.  Change vocab_from_file to False to create vocab_file."
         # img_folder = os.path.join(cocoapi_loc, 'cocoapi/images/train2014/')
-        annotations_file = './data/annotations_DCC/captions_no_caption_rm_eightCluster_train2014.json'
-    if mode == 'test':
+        annotations_file = os.path.join(data_loc, 'captions_no_caption_rm_eightCluster_train2014.json')
+    else:
         assert batch_size == 1, "Please change batch_size to 1 if testing your model."
         assert os.path.exists(vocab_file), "Must first generate vocab.pkl from training data."
         assert vocab_from_file, "Change vocab_from_file to True."
         # img_folder = os.path.join(cocoapi_loc, 'cocoapi/images/test2014/')
-        annotations_file = os.path.join(cocoapi_loc, 'cocoapi/annotations/image_info_test2014.json')
+        # annotations_file = os.path.join(cocoapi_loc, 'cocoapi/annotations/image_info_test2014.json')
+        annotations_file = os.path.join(data_loc, f'captions_split_set_{category}_val_{mode}_novel2014.json')
 
     # COCO caption dataset.
     dataset = CoCoDataset(transform=transform,
