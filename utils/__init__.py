@@ -9,3 +9,9 @@ from .preprocess import (
     reproduce,
     get_loader,
 )
+
+from .inference import (
+    clean_sentence,
+    get_prediction,
+    generate_caption,
+)

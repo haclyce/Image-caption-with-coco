@@ -5,15 +5,18 @@
 # @File     : noc.py
 # @Project  : lab
 import argparse
+import json
 import os
 import sys
 
 import numpy as np
 import torch
 import yaml
+from pycocoevalcap.eval import COCOEvalCap
+from pycocotools.coco import COCO
 from torch import nn
 from torch.utils import data
-from tqdm import trange
+from tqdm import trange, tqdm
 
 import utils
 import model
@@ -75,11 +78,76 @@ def train(device, data_loader, encoder, decoder, criterion, optimizer, vocab_siz
 
         # Save the weights.
         if epoch % args.save_every == 0:
-            torch.save(encoder.state_dict(), os.path.join('checkpoints/', 'encoder-%d.pkl' % epoch))
-            torch.save(decoder.state_dict(), os.path.join('checkpoints/', 'decoder-%d.pkl' % epoch))
+            torch.save(encoder.state_dict(), os.path.join('./checkpoints/', 'encoder-%d.pkl' % epoch))
+            torch.save(decoder.state_dict(), os.path.join('./checkpoints/', 'decoder-%d.pkl' % epoch))
 
     # Close the training log file.
     f.close()
+
+
+def validate(mode, device, data_loader, encoder, decoder, vocab, save_path, categories=None):
+    encoder.eval(), decoder.eval()
+    # initial F1 scores
+    f1_count = 0
+    total_count = 0
+    # to store the captions in
+    results = []
+
+    # prevents duplicates in the json file
+    id_occurences = {}
+
+    for (images, captions, lengths, img_ids) in tqdm(data_loader):
+        for image, length, img_id in zip(images, lengths, img_ids):
+            # number of captions generated
+            total_count += 1
+
+            image = image.view(1, *image.size())
+            image = image.to(device)
+
+            # calculates the caption from the image
+            sampled_caption = utils.generate_caption(image, encoder, decoder, vocab, device)
+
+            # checks if any of the objects are mentioned
+            # returns a positive example
+
+            contained = False
+            # checks if any of the object names are contained in
+            # the sampled captions
+            for word in sampled_caption:
+                for name in categories:
+                    if name in word:
+                        contained = True
+            if contained:
+                f1_count += 1
+
+            sentence = ' '.join(sampled_caption)
+
+            # for the general evaluation
+            if str(img_id) not in id_occurences:
+                results.append({"image_id": int(img_id), "caption": sentence})
+                id_occurences[str(img_id)] = 1
+
+    # write results to file
+    with open(os.path.join(f'./log/results/{mode}', save_path), 'w') as f:
+        json.dump(results, f)
+
+    return f1_count / total_count
+
+
+def evaluate(mode, object_class, save_path):
+    results = {}
+
+    # Evaluation section
+    coco = COCO(object_class)
+    cocoRes = coco.loadRes(os.path.join(f'./log/results/{mode}', save_path))
+
+    # create cocoEval object by taking coco and cocoRes
+    cocoEval = COCOEvalCap(coco, cocoRes)
+    cocoEval.evaluate()
+
+    for metric, score in cocoEval.eval.items():
+        results[metric] = score
+    return results
 
 
 def main(config):
@@ -104,6 +172,28 @@ def main(config):
     optimizer = torch.optim.Adam(list(decoder.parameters()) + list(encoder.embed.parameters()), lr=args.lr)
     total_step = int(len(train_loader.dataset.caption_lengths) / train_loader.batch_sampler.batch_size) + 1
     train(device, train_loader, encoder, decoder, criterion, optimizer, vocab_size, total_step, 'train.log')
+    val_f1_score = {
+        category: validate('val', device, loader, encoder, decoder,
+                           train_loader.dataset.vocab, f'{category}.json', config['categories'])
+        for category, loader in zip(config['categories'], val_loader)
+    }
+    test_f1_score = {
+        category: validate('test', device, loader, encoder, decoder,
+                           train_loader.dataset.vocab, f'{category}.json', config['categories'])
+        for category, loader in zip(config['categories'], test_loader)
+    }
+    print(f'Validation F1 score: {val_f1_score}')
+    print(f'Test F1 score: {test_f1_score}')
+    val_results = {
+        category: evaluate('val', category, f'{category}.json')
+        for category in config['categories']
+    }
+    test_results = {
+        category: evaluate('test', category, f'{category}.json')
+        for category in config['categories']
+    }
+    print(f'Validation results: {val_results}')
+    print(f'Test results: {test_results}')
 
 
 if __name__ == '__main__':
