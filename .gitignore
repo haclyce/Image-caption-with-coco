@@ -2,6 +2,8 @@
 main.ipynb
 data/
 reference/
+checkpoints/
+log/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

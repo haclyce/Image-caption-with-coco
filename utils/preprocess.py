@@ -17,6 +17,7 @@ from PIL import Image
 from pycocotools.coco import COCO
 from skimage import io
 from torch.utils import data
+from torchvision import transforms
 from tqdm import tqdm
 
 
@@ -197,9 +198,9 @@ def reproduce(seed):
     return 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-def get_loader(transform,
+def get_loader(transform=None,
                mode='train',
-               batch_size=1,
+               batch_size=128,
                vocab_threshold=None,
                vocab_file='./data/vocab.pkl',
                start_word="<start>",
@@ -208,7 +209,7 @@ def get_loader(transform,
                vocab_from_file=True,
                num_workers=0,
                data_loc='./data/annotations_DCC/',
-               category=None,):
+               category=None, ):
     """Returns the data loader.
     Args:
       transform: Image transform.
@@ -232,6 +233,7 @@ def get_loader(transform,
 
     # Based on mode (train, val, test), obtain img_folder and annotations_file.
     if mode == 'train':
+        transform = transform_train
         if vocab_from_file:
             assert os.path.exists(
                 vocab_file), "vocab_file does not exist.  Change vocab_from_file to False to create vocab_file."
@@ -241,6 +243,7 @@ def get_loader(transform,
         assert batch_size == 1, "Please change batch_size to 1 if testing your model."
         assert os.path.exists(vocab_file), "Must first generate vocab.pkl from training data."
         assert vocab_from_file, "Change vocab_from_file to True."
+        assert category, "Must provide category name if in 'val' or 'test' mode."
         # img_folder = os.path.join(cocoapi_loc, 'cocoapi/images/test2014/')
         # annotations_file = os.path.join(cocoapi_loc, 'cocoapi/annotations/image_info_test2014.json')
         annotations_file = os.path.join(data_loc, f'captions_split_set_{category}_val_{mode}_novel2014.json')
@@ -273,3 +276,13 @@ def get_loader(transform,
                                       shuffle=True,
                                       num_workers=num_workers)
     return data_loader
+
+
+transform_train = transforms.Compose([
+    # use lanczos to get better results
+    transforms.Resize(256, interpolation=transforms.InterpolationMode.LANCZOS),
+    transforms.RandomCrop(224),
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+    transforms.Normalize((0.485, 0.456, 0.406),
+                         (0.229, 0.224, 0.225))])
