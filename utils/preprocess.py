@@ -1,16 +1,8 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# @Author   : Stanl
-# @Time     : 2023/5/30 23:23
-# @File     : preprocess.py
-# @Project  : lab
 import json
 import os
 import pickle
 import random
 from collections import Counter
-
-import nltk
 import numpy as np
 import torch
 from PIL import Image
@@ -21,111 +13,22 @@ from torchvision import transforms
 from tqdm import tqdm
 import torchvision.transforms.functional as F
 
-class Vocabulary(object):
-    def __init__(self,
-                 vocab_threshold,
-                 vocab_file='./data/vocab.pkl',
-                 start_word="<start>",
-                 end_word="<end>",
-                 unk_word="<unk>",
-                 annotations_file='./data/annotations_DCC/captions_no_caption_rm_eightCluster_train2014.json',
-                 vocab_from_file=False):
-        """Initialize the vocabulary.
-        Args:
-          vocab_threshold: Minimum word count threshold.
-          vocab_file: File containing the vocabulary.
-          start_word: Special word denoting sentence start.
-          end_word: Special word denoting sentence end.
-          unk_word: Special word denoting unknown words.
-          annotations_file: Path for train annotation file.
-          vocab_from_file: If False, create vocab from scratch & override any existing vocab_file
-                           If True, load vocab from existing vocab_file, if it exists
-        """
-        self.vocab_threshold = vocab_threshold
-        self.vocab_file = vocab_file
-        self.start_word = start_word
-        self.end_word = end_word
-        self.unk_word = unk_word
-        self.annotations_file = annotations_file
-        self.vocab_from_file = vocab_from_file
-        self.get_vocab()
-
-    def get_vocab(self):
-        """Load the vocabulary from file OR build the vocabulary from scratch."""
-        if os.path.exists(self.vocab_file) & self.vocab_from_file:
-            with open(self.vocab_file, 'rb') as f:
-                vocab = pickle.load(f)
-                self.word2idx = vocab.word2idx
-                self.idx2word = vocab.idx2word
-            print('Vocabulary successfully loaded from vocab.pkl file!')
-        else:
-            self.build_vocab()
-            with open(self.vocab_file, 'wb') as f:
-                pickle.dump(self, f)
-
-    def build_vocab(self):
-        """Populate the dictionaries for converting tokens to integers (and vice-versa)."""
-        self.init_vocab()
-        self.add_word(self.start_word)
-        self.add_word(self.end_word)
-        self.add_word(self.unk_word)
-        self.add_captions()
-
-    def init_vocab(self):
-        """Initialize the dictionaries for converting tokens to integers (and vice-versa)."""
-        self.word2idx = {}
-        self.idx2word = {}
-        self.idx = 0
-
-    def add_word(self, word):
-        """Add a token to the vocabulary."""
-        if word not in self.word2idx:
-            self.word2idx[word] = self.idx
-            self.idx2word[self.idx] = word
-            self.idx += 1
-
-    def add_captions(self):
-        """Loop over training captions and add all tokens to the vocabulary that meet or exceed the threshold."""
-        coco = COCO(self.annotations_file)
-        counter = Counter()
-        ids = coco.anns.keys()
-        for i, ID in enumerate(ids):
-            caption = str(coco.anns[ID]['caption'])
-            tokens = nltk.tokenize.word_tokenize(caption.lower())
-            counter.update(tokens)
-
-            if i % 50000 == 0:
-                print("[%d/%d] Tokenizing captions..." % (i, len(ids)))
-
-        words = [word for word, cnt in counter.items() if cnt >= self.vocab_threshold]
-
-        for i, word in enumerate(words):
-            self.add_word(word)
-
-    def __call__(self, word):
-        if word not in self.word2idx:
-            return self.word2idx[self.unk_word]
-        return self.word2idx[word]
-
-    def __len__(self):
-        return len(self.word2idx)
-
-
 class CoCoDataset(data.Dataset):
-    def __init__(self, transform, mode, batch_size, vocab_threshold, vocab_file, start_word,
-                 end_word, unk_word, annotations_file, vocab_from_file):
+    def __init__(self, transform, mode, batch_size, vocab_threshold, vocab_file,annotations_file,vocab_from_file):
         self.transform = transform
         self.mode = mode
         self.batch_size = batch_size
-        self.vocab = Vocabulary(vocab_threshold, vocab_file, start_word,
-                                end_word, unk_word, annotations_file, vocab_from_file)
+        self.vocab = Vocabulary(vocab_threshold, vocab_file,annotations_file, vocab_from_file)
         # self.img_folder = img_folder
         if self.mode == 'train':
             self.coco = COCO(annotations_file)
             self.ids = list(self.coco.anns.keys())
             print('Obtaining caption lengths...')
-            all_tokens = [nltk.tokenize.word_tokenize(str(self.coco.anns[self.ids[index]]['caption']).lower()) for index
-                          in tqdm(np.arange(len(self.ids)))]
+            all_tokens= []
+            for id in tqdm(self.ids):
+                caption = str(self.coco.anns[id]['caption'])
+                tokens = caption.split()
+                all_tokens.append(tokens)
             self.caption_lengths = [len(token) for token in all_tokens]
         else:
             test_info = json.loads(open(annotations_file).read())
@@ -138,18 +41,14 @@ class CoCoDataset(data.Dataset):
             ann_id = self.ids[index]
             caption = self.coco.anns[ann_id]['caption']
             img_id = self.coco.anns[ann_id]['image_id']
-            # path = self.coco.loadImgs(img_id)[0]['file_name']
             img = self.coco.loadImgs(img_id)[0]
             img_dir='./data/images/train2014/'+img['file_name']
 
-            # Convert image to tensor and pre-process using transform
-            # image = Image.open(os.path.join(self.img_folder, path)).convert('RGB')
-            # image = self.transform(image)
             image= Image.open(img_dir).convert('RGB')
             image = self.transform(image)
 
             # Convert caption to tensor of word ids.
-            tokens = nltk.tokenize.word_tokenize(str(caption).lower())
+            tokens = str(caption).lower().split()
             caption = [self.vocab(self.vocab.start_word)]
             caption.extend([self.vocab(token) for token in tokens])
             caption.append(self.vocab(self.vocab.end_word))
@@ -204,30 +103,11 @@ def get_loader(transform=None,
                batch_size=128,
                vocab_threshold=None,
                vocab_file='./data/vocab.pkl',
-               start_word="<start>",
-               end_word="<end>",
-               unk_word="<unk>",
                vocab_from_file=True,
                num_workers=0,
                data_loc='./data/annotations_DCC/',
-               category=None, ):
-    """Returns the data loader.
-    Args:
-      transform: Image transform.
-      mode: One of 'train' or 'test'.
-      batch_size: Batch size (if in testing mode, must have batch_size=1).
-      vocab_threshold: Minimum word count threshold.
-      vocab_file: File containing the vocabulary.
-      start_word: Special word denoting sentence start.
-      end_word: Special word denoting sentence end.
-      unk_word: Special word denoting unknown words.
-      vocab_from_file: If False, create vocab from scratch & override any existing vocab_file.
-                       If True, load vocab from existing vocab_file, if it exists.
-      num_workers: Number of subprocesses to use for data loading.
-      data_loc: The location of the folder containing the MSCOCO annotations.
-      category: The name of the novel object category, only works for 'val' or 'test' mode.
-    """
-
+               category=None,):
+    
     assert mode in ['train', 'val', 'test'], "mode must be one of 'train' 'val' or 'test'."
     if not vocab_from_file:
         assert mode == 'train', "To generate vocab from captions file, must be in training mode (mode='train')."
@@ -255,9 +135,6 @@ def get_loader(transform=None,
                           batch_size=batch_size,
                           vocab_threshold=vocab_threshold,
                           vocab_file=vocab_file,
-                          start_word=start_word,
-                          end_word=end_word,
-                          unk_word=unk_word,
                           annotations_file=annotations_file,
                           vocab_from_file=vocab_from_file)
     if mode == 'train':
