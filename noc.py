@@ -157,11 +157,11 @@ def main(config):
         vocab_threshold=args.vocab_threshold, vocab_from_file=args.vocab_from_file
     )
     val_loader = [
-        utils.get_loader(mode='val', batch_size=args.batch_size, category=category)
+        utils.get_loader(mode='val', batch_size=1, category=category)
         for category in config['categories']
     ]
     test_loader = [
-        utils.get_loader(mode='test', batch_size=args.batch_size, category=category)
+        utils.get_loader(mode='test', batch_size=1, category=category)
         for category in config['categories']
     ]
     encoder = model.EncoderResNet(args.embed_size, args.resnet).to(device)
@@ -211,7 +211,7 @@ if __name__ == '__main__':
     parser.add_argument('--vocab-threshold', '-t', default=config['vt'], type=int, help="Minimum word count threshold")
     parser.add_argument('--vocab-from-file', '-v', action='store_true', help="Load vocab from existing vocab file")
     parser.add_argument('--num-layers', '-n', default=config['num_layers'], type=int, help="Number of layers in LSTM")
-    parser.add_argument('--save-every', '-s', default=config['save_every'], type=int, help="Frequency of saving model "
+    parser.add_argument('--save-every', '-se', default=config['save_every'], type=int, help="Frequency of saving model "
                                                                                            "weights")
     parser.add_argument('--print-every', '-p', default=config['print_every'], type=int, help="Frequency of printing "
                                                                                              "training statistics")

@@ -19,7 +19,7 @@ from skimage import io
 from torch.utils import data
 from torchvision import transforms
 from tqdm import tqdm
-
+import torchvision.transforms.functional as F
 
 class Vocabulary(object):
     def __init__(self,
@@ -140,12 +140,13 @@ class CoCoDataset(data.Dataset):
             img_id = self.coco.anns[ann_id]['image_id']
             # path = self.coco.loadImgs(img_id)[0]['file_name']
             img = self.coco.loadImgs(img_id)[0]
+            img_dir='./data/images/train2014/'+img['file_name']
 
             # Convert image to tensor and pre-process using transform
             # image = Image.open(os.path.join(self.img_folder, path)).convert('RGB')
             # image = self.transform(image)
-            image = io.imread(img['url'])
-            image = self.transform(Image.fromarray(image))
+            image= Image.open(img_dir).convert('RGB')
+            image = self.transform(image)
 
             # Convert caption to tensor of word ids.
             tokens = nltk.tokenize.word_tokenize(str(caption).lower())
@@ -280,7 +281,8 @@ def get_loader(transform=None,
 
 transform_train = transforms.Compose([
     # use lanczos to get better results
-    transforms.Resize(256, interpolation=transforms.InterpolationMode.LANCZOS),
+    #transforms.Resize(256, interpolation=F._interpolation_modes_from_int(1)),
+    transforms.Resize(256),
     transforms.RandomCrop(224),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
