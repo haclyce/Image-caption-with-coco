@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# @Author   : Stanl
-# @Time     : 2023/6/1 19:06
-# @File     : inference.py
-# @Project  : lab
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
@@ -34,12 +28,10 @@ def get_prediction(data_loader, device, encoder, decoder):
     print(sentence)
 
 
-def generate_caption(image, encoder, decoder, vocab, device):
+def generate_caption(image, encoder, decoder, vocab):
     with torch.no_grad():
-        feature = encoder(image)
-        start_token = torch.tensor(vocab.word2idx['<start>']).to(device)
-        sampled_ids = decoder.sample(feature, start_token)
-
+        feature = encoder(image).unsqueeze(1)
+        sampled_ids = decoder.sample(feature)
     # Convert word_ids to words
     sampled_caption = []
     for word_id in sampled_ids:
@@ -47,5 +39,5 @@ def generate_caption(image, encoder, decoder, vocab, device):
         if word == '<end>':
             break
         sampled_caption.append(word)
-
-    return sampled_caption
+    sentence = ' '.join(sampled_caption[1:])
+    return sentence
