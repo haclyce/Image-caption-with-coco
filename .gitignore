@@ -7,3 +7,5 @@ log/
 run.sh
 results/
 vocab/
+/_pycache_/
+```
